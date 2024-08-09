@@ -1,16 +1,53 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:plangrid/models/annotation_data.dart';
+import 'dart:io';
+
+import 'package:plangrid/models/room_manager.dart';
 
 class ContractorDialog extends StatefulWidget {
-  final List<String> values;
+  final AnnotationData data;
+  final String roomKey;
 
-  const ContractorDialog({Key? key, required this.values}) : super(key: key);
+  const ContractorDialog({Key? key, required this.data, required this.roomKey}) : super(key: key);
 
   @override
   _ContractorDialogState createState() => _ContractorDialogState();
 }
 
 class _ContractorDialogState extends State<ContractorDialog> {
-  String? selectedValue;
+  late AnnotationData selectedData;
+  final ImagePicker _picker = ImagePicker();
+  late List<String> roomOptions;
+  final RoomManager roomManager = RoomManager();
+
+  @override
+  void initState() {
+    super.initState();
+    selectedData = widget.data;
+    roomOptions = roomManager.getRoomsFromPage(widget.roomKey);
+    print(roomOptions);
+  }
+
+  Future<void> _pickImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        selectedData.images.add(File(pickedFile.path));
+      });
+    }
+  }
+
+  Future<void> _takePhoto() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.camera);
+    if (pickedFile != null) {
+      setState(() {
+        selectedData.images.add(File(pickedFile.path));
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,8 +59,8 @@ class _ContractorDialogState extends State<ContractorDialog> {
         children: [
           const Text('Select Room name'),
           DropdownButtonFormField(
-            value: widget.values.isNotEmpty ? widget.values[0] : 'Room 1',
-            items: ['Room 1', 'Room 2', 'Room 3', 'Room 4'].map((peer) {
+            value: widget.data.room != "" ? widget.data.room : roomOptions[0],
+            items: roomOptions.map((peer) {
               return DropdownMenuItem<String>(
                 value: peer,
                 child: Text(peer),
@@ -31,9 +68,31 @@ class _ContractorDialogState extends State<ContractorDialog> {
             }).toList(),
             onChanged: (String? newValue) {
               setState(() {
-                selectedValue = newValue;
+                selectedData.room = newValue!;
               });
             },
+          ),
+          const SizedBox(height: 20),
+          ElevatedButton(
+            onPressed: _pickImage,
+            child: const Text('Pick Image'),
+          ),
+          ElevatedButton(
+            onPressed: _takePhoto,
+            child: const Text('Take a Photo'),
+          ),
+          const SizedBox(height: 20),
+          Wrap(
+            children: selectedData.images.map((file) {
+              return Padding(
+                padding: const EdgeInsets.all(4.0),
+                child: Image.file(
+                  file,
+                  width: 100,
+                  height: 100,
+                ),
+              );
+            }).toList(),
           ),
         ],
       ),
@@ -47,13 +106,10 @@ class _ContractorDialogState extends State<ContractorDialog> {
         TextButton(
           child: const Text('Save'),
           onPressed: () {
-            if (selectedValue != null) {
-              Navigator.of(context).pop(selectedValue);
-            }
+            Navigator.of(context).pop(selectedData);
           },
         ),
       ],
     );
   }
 }
-

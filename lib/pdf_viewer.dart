@@ -2,7 +2,12 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_painter_v2/flutter_painter.dart';
-import 'annotation_manager.dart';
+import 'package:plangrid/CustomDrawable/custom_oval_factory.dart';
+import 'package:plangrid/annotation_text.dart';
+import 'package:plangrid/custom_oval_drawable.dart';
+import 'package:plangrid/models/annotation_data.dart';
+import 'package:plangrid/utils/helpers.dart';
+import 'models/annotation_manager.dart';
 import 'package:phosphor_flutter/phosphor_flutter.dart';
 import 'dialog.dart';
 
@@ -46,27 +51,7 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
         }
         List<Drawable> list = [];
         print(annotation);
-        if (annotation.isText) {
-          list.add(TextDrawable(
-            text: annotation.content.length == 1 ? annotation.content.first : '',
-            position: Offset(annotation.offsetX, annotation.offsetY),
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.red,
-              fontSize: 18,
-            ),
-          ));
-        } else {
-          list.add(OvalDrawable(
-            size: annotation.size,
-            position: Offset(annotation.offsetX, annotation.offsetY),
-            paint: Paint()
-              ..strokeWidth = 5
-              ..color = Colors.red
-              ..style = PaintingStyle.stroke
-              ..strokeCap = StrokeCap.round,
-          ));
-        }
+        list.add(annotation.drawable);
         print(list);
         _controllers[annotation.pageIndex].addDrawables(list);
         _pageAnnotations[annotation.pageIndex]!.add(annotation);
@@ -101,10 +86,7 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
         if (currentAnnotation == null) {
           final annotation = _annotationManager.findAnnotation(
             '${widget.directory.path}/page$_currentPageIndex',
-            selectedDrawable.position.dx,
-            selectedDrawable.position.dy,
-            selectedDrawable.getSize(),
-            selectedDrawable.runtimeType == TextDrawable,
+            selectedDrawable,
           );
           if (annotation != null) {
             setState(() {
@@ -153,24 +135,21 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
     return controller;
   }
 
-  void _addAnnotation(int pageIndex, Offset offset, Size size) {
+  void _addAnnotation(int pageIndex, ObjectDrawable d) {
     bool isAnnotationText =
         _controllers[_currentPageIndex].selectedObjectDrawable.runtimeType ==
             TextDrawable;
     final annotation = Annotation(
-        documentPath: widget.directory.path,
-        pageIndex: pageIndex,
-        offsetX: offset.dx,
-        offsetY: offset.dy,
-        size: size,
-        content: isAnnotationText
-            ? [
-                (_controllers[_currentPageIndex].selectedObjectDrawable
-                        as TextDrawable)
-                    .text
-              ]
-            : [],
-        isText: isAnnotationText);
+      documentPath: widget.directory.path,
+      pageIndex: pageIndex,
+      drawable: d,
+      content: AnnotationData("", []),
+      text: isAnnotationText
+          ? (_controllers[_currentPageIndex].selectedObjectDrawable
+                  as TextDrawable)
+              .text
+          : "",
+    );
     setState(() {
       if (!_pageAnnotations.containsKey(pageIndex)) {
         _pageAnnotations[pageIndex] = [];
@@ -186,18 +165,20 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
 
   Future<void> _showEditAnnotationDialog(
       int pageIndex, String annotationId) async {
+    String key = getAnnotationKey(widget.directory.path, pageIndex);
     final annotation = _annotationManager.findAnnotationById(
-        '${widget.directory.path}/page$pageIndex', annotationId);
+        key, annotationId);
 
     if (annotation != null) {
-      final newContent = await showDialog<String>(
+      final newContent = await showDialog<AnnotationData>(
         context: context,
-        builder: (context) => ContractorDialog(values: annotation.content),
+        builder: (context) => ContractorDialog(data: annotation.content, roomKey: key),
       );
 
-      if (newContent != null && newContent.isNotEmpty) {
+      if (newContent != null) {
         setState(() {
-          annotation.content = [newContent];
+          annotation.content =
+              AnnotationData(newContent.room, newContent.images);
         });
         _annotationManager.updateAnnotation(
           '${widget.directory.path}/page$pageIndex',
@@ -269,7 +250,8 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
     final selectedDrawable =
         _controllers[_currentPageIndex].selectedObjectDrawable;
 
-    final key = '${widget.directory.path}/page$index';
+    final key = getAnnotationKey(widget.directory.path, index);
+    print(key);
     final annotation =
         _annotationManager.findAnnotationById(key, currentAnnotation!.id);
     if (annotation != null) {
@@ -292,29 +274,30 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
   }
 
   void saveAnnotation(int index, ObjectDrawable d) {
-    final key = '${widget.directory.path}/page$index';
+    final key = getAnnotationKey(widget.directory.path, index);
 
-    ObjectDrawable? selectedDrawable = _controllers[_currentPageIndex].selectedObjectDrawable;
+    ObjectDrawable? selectedDrawable =
+        _controllers[_currentPageIndex].selectedObjectDrawable;
 
     if (currentAnnotation != null) {
       Annotation annotation =
           _annotationManager.findAnnotationById(key, currentAnnotation!.id)!;
-      String? updatedContent = selectedDrawable.runtimeType == TextDrawable ? (selectedDrawable as TextDrawable).text : null;
+      String? updatedContent = selectedDrawable.runtimeType == TextDrawable
+          ? (selectedDrawable as TextDrawable).text
+          : null;
       _annotationManager.updateAnnotation(
           key,
           Annotation(
             id: annotation.id,
             documentPath: annotation.documentPath,
             pageIndex: annotation.pageIndex,
-            content: updatedContent != null ? [updatedContent] : annotation.content,
-            size: d.getSize(),
-            offsetX: d.position.dx,
-            offsetY: d.position.dy,
-            isText: updatedContent != null,
+            content: annotation.content,
+            text: updatedContent != null ? updatedContent : annotation.text,
+            drawable: d,
           ));
     } else {
       print('adding new annotation!');
-      _addAnnotation(index, d.position, d.getSize());
+      _addAnnotation(index, d);
     }
   }
 
@@ -338,6 +321,30 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
 
   bool _isDistorted(double angle) {
     return angle == pi / 2 || angle == 3 * pi / 2;
+  }
+
+  Future<void> _addTextToAnnotation(int index, String id) async {
+    final selectedDrawable =
+        _controllers[_currentPageIndex].selectedObjectDrawable;
+    if (selectedDrawable is OvalWithCenteredTextDrawable) {
+      final newText = await showDialog<String>(
+        context: context,
+        builder: (context) => TextDialog(initialVal: selectedDrawable.text),
+      );
+
+      print(newText);
+
+      if (newText != null && currentAnnotation != null) {
+        setState(() {
+          selectedDrawable.updateText(newText);
+        });
+
+        Annotation copy = currentAnnotation!;
+        copy.text = newText;
+        _annotationManager.updateAnnotation(
+            getAnnotationKey(widget.directory.path, index), copy);
+      }
+    }
   }
 
   @override
@@ -433,6 +440,13 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
                                                         .selectedObjectDrawable!
                                                         .runtimeType !=
                                                     TextDrawable)
+                                                  _buildAddTextIcon(
+                                                      _currentPageIndex),
+                                                if (_controllers[
+                                                            _currentPageIndex]
+                                                        .selectedObjectDrawable!
+                                                        .runtimeType !=
+                                                    TextDrawable)
                                                   _buildEditAnnotationIcon(
                                                       _currentPageIndex),
                                                 _buildRemoveDrawableIcon(
@@ -498,10 +512,10 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
         ),
         IconButton(
           icon: const Icon(Icons.circle),
-          tooltip: 'Draw ellipse',
+          tooltip: 'Draw circle',
           onPressed: () {
             _selectShape(
-              OvalFactory(),
+              CustomOvalFactory(),
             );
           },
         ),
@@ -612,6 +626,18 @@ class _PdfViewerPageState extends State<PdfViewerPage> {
       onPressed: () async {
         if (currentAnnotation != null) {
           await _showEditAnnotationDialog(index, currentAnnotation!.id);
+        }
+      },
+    );
+  }
+
+  IconButton _buildAddTextIcon(int index) {
+    return IconButton(
+      icon: const Icon(Icons.text_increase),
+      tooltip: 'Add Data',
+      onPressed: () async {
+        if (currentAnnotation != null) {
+          await _addTextToAnnotation(index, currentAnnotation!.id);
         }
       },
     );

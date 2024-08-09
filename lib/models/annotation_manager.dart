@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+import 'package:flutter_painter_v2/flutter_painter.dart';
+import 'package:plangrid/models/annotation_data.dart';
 
 class AnnotationManager {
   AnnotationManager._privateConstructor();
@@ -23,17 +24,12 @@ class AnnotationManager {
     _annotations[key]!.add(annotation);
   }
 
-  Annotation? findAnnotation(
-      String key, double offsetX, double offsetY, Size size, bool isText) {
+  Annotation? findAnnotation(String key, ObjectDrawable drawable) {
     final annotations = _annotations[key];
 
     if (annotations != null) {
       for (var annotation in annotations) {
-        print("$annotation $offsetX $offsetY $isText");
-        if (roundNumber(annotation.offsetX) == roundNumber(offsetX) &&
-            roundNumber(annotation.offsetY) == roundNumber(offsetY) &&
-            annotation.isText == isText) {
-          print(annotation);
+        if (annotation.drawable == drawable) {
           return annotation;
         }
       }
@@ -43,13 +39,6 @@ class AnnotationManager {
 
   List<Annotation> getAnnotations(String key) {
     return _annotations[key] ?? [];
-  }
-
-  double roundNumber(double num) {
-    int precision = 2;
-
-    String roundedString = num.toStringAsFixed(precision);
-    return double.parse(roundedString);
   }
 
   Annotation? findAnnotationById(String key, String id) {
@@ -72,10 +61,9 @@ class AnnotationManager {
   void updateAnnotation(String key, Annotation updatedAnnotation) {
     if (_annotations.containsKey(key)) {
       for (int i = 0; i < _annotations[key]!.length; i++) {
-        if (_annotations[key]![i].id == updatedAnnotation.id) {
-          if (updatedAnnotation.isText != _annotations[key]![i].isText) {
-            updatedAnnotation.isText = _annotations[key]![i].isText;
-          }
+        if (_annotations[key]![i].id == updatedAnnotation.id &&
+            _annotations[key]![i].drawable.runtimeType ==
+                updatedAnnotation.drawable.runtimeType) {
           _annotations[key]![i] = updatedAnnotation;
           break;
         }
@@ -88,25 +76,21 @@ class Annotation {
   final String id;
   final String documentPath;
   final int pageIndex;
-  Size size;
-  double offsetX;
-  double offsetY;
-  List<String> content;
-  bool isText;
+  ObjectDrawable drawable;
+  AnnotationData content;
+  String? text;
 
   Annotation({
     String? id,
     required this.documentPath,
     required this.pageIndex,
+    required this.drawable,
     required this.content,
-    required this.size,
-    required this.offsetX,
-    required this.offsetY,
-    required this.isText,
+    this.text,
   }) : id = id ?? DateTime.now().toIso8601String();
 
   @override
   String toString() {
-    return 'Annotation{id: $id, documentPath: $documentPath, pageIndex: $pageIndex, size: $size, offsetX: $offsetX, offsetY: $offsetY, content: $content, isText: $isText}';
+    return 'Annotation{id: $id, documentPath: $documentPath, pageIndex: $pageIndex, drawable: $drawable, content: $content, text: $text}';
   }
 }

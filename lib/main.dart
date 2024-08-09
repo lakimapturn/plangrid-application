@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_gemini/flutter_gemini.dart';
 import 'pdf_list.dart';
 import 'pdf_upload.dart';
 import 'annotation_list.dart';
 
-void main() => runApp(MyApp());
+void main() {
+  Gemini.init(apiKey: 'AIzaSyCqz3SviaSrRO8eZC3K33Ub6-e2gjxeKSs');
+  runApp(MyApp());
+}
 
 class MyApp extends StatelessWidget {
   @override
@@ -52,7 +56,8 @@ class HomePage extends StatelessWidget {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => AnnotationsListPage()),
+                  MaterialPageRoute(
+                      builder: (context) => AnnotationsListPage()),
                 );
               },
             ),
